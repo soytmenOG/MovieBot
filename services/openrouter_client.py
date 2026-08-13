@@ -3,7 +3,7 @@ import json
 import httpx
 import tenacity
 
-from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
+from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
 
 PROPOSE_MOVIES_TOOL = {
     "type": "function",
@@ -43,12 +43,12 @@ PROPOSE_MOVIES_TOOL = {
 }
 
 
-class DeepSeekError(Exception):
+class OpenRouterError(Exception):
     pass
 
 
 def _should_retry(exc: BaseException) -> bool:
-    if isinstance(exc, httpx.TimeoutException):
+    if isinstance(exc, httpx.TransportError):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code == 429 or exc.response.status_code >= 500
@@ -65,12 +65,17 @@ _retry = tenacity.retry(
 
 @_retry
 async def _call_api(messages: list[dict]) -> dict:
-    async with httpx.AsyncClient(base_url=DEEPSEEK_BASE_URL, timeout=httpx.Timeout(20.0)) as client:
+    async with httpx.AsyncClient(base_url=OPENROUTER_BASE_URL, timeout=httpx.Timeout(20.0)) as client:
         response = await client.post(
             "/chat/completions",
-            headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"},
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                # OpenRouter просит указывать источник трафика для бесплатных моделей.
+                "HTTP-Referer": "https://github.com/",
+                "X-Title": "MovieBot",
+            },
             json={
-                "model": DEEPSEEK_MODEL,
+                "model": OPENROUTER_MODEL,
                 "messages": messages,
                 "tools": [PROPOSE_MOVIES_TOOL],
                 "tool_choice": "auto",
@@ -85,17 +90,21 @@ async def get_recommendation_reply(messages: list[dict]) -> dict:
     try:
         payload = await _call_api(messages)
     except httpx.TimeoutException as exc:
-        raise DeepSeekError("DeepSeek не ответил вовремя, попробуй ещё раз") from exc
+        raise OpenRouterError("OpenRouter не ответил вовремя, попробуй ещё раз") from exc
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         if status == 429:
-            raise DeepSeekError("DeepSeek сейчас перегружен, попробуй через минуту") from exc
-        raise DeepSeekError(f"DeepSeek вернул ошибку {status}") from exc
+            raise OpenRouterError("Бесплатный лимит OpenRouter исчерпан, попробуй через минуту") from exc
+        raise OpenRouterError(f"OpenRouter вернул ошибку {status}") from exc
+    except httpx.TransportError as exc:
+        raise OpenRouterError(
+            "Не удалось подключиться к OpenRouter — проверь интернет-соединение (может понадобиться VPN)"
+        ) from exc
 
     try:
         message = payload["choices"][0]["message"]
     except (KeyError, IndexError, TypeError) as exc:
-        raise DeepSeekError("Неожиданный формат ответа DeepSeek") from exc
+        raise OpenRouterError("Неожиданный формат ответа OpenRouter") from exc
 
     tool_calls = message.get("tool_calls")
     if tool_calls:
@@ -104,7 +113,7 @@ async def get_recommendation_reply(messages: list[dict]) -> dict:
             arguments = json.loads(call["function"]["arguments"])
             items = arguments["items"]
         except (KeyError, ValueError, TypeError) as exc:
-            raise DeepSeekError("DeepSeek вернул некорректный вызов инструмента") from exc
+            raise OpenRouterError("OpenRouter вернул некорректный вызов инструмента") from exc
         return {"type": "movies", "items": items, "text": message.get("content") or ""}
 
     return {"type": "text", "text": message.get("content") or ""}

@@ -11,7 +11,7 @@ class TMDBError(Exception):
 
 
 def _should_retry(exc: BaseException) -> bool:
-    if isinstance(exc, httpx.TimeoutException):
+    if isinstance(exc, httpx.TransportError):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code == 429 or exc.response.status_code >= 500
@@ -28,15 +28,11 @@ _retry = tenacity.retry(
 
 @_retry
 async def _fetch_search(title: str, year: Optional[str]) -> dict:
-    params = {"query": title, "language": "ru-RU"}
+    params = {"query": title, "language": "ru-RU", "api_key": TMDB_API_KEY}
     if year:
         params["year"] = year
     async with httpx.AsyncClient(base_url=TMDB_BASE_URL, timeout=httpx.Timeout(10.0)) as client:
-        response = await client.get(
-            "/search/movie",
-            params=params,
-            headers={"Authorization": f"Bearer {TMDB_API_KEY}"},
-        )
+        response = await client.get("/search/movie", params=params)
         response.raise_for_status()
         return response.json()
 
@@ -52,6 +48,10 @@ async def search_movie(title: str, year: Optional[str] = None) -> list[dict]:
         if status == 429:
             raise TMDBError("TMDB сейчас перегружен, попробуй чуть позже") from exc
         raise TMDBError(f"TMDB вернул ошибку {status}") from exc
+    except httpx.TransportError as exc:
+        raise TMDBError(
+            "Не удалось подключиться к TMDB — проверь интернет-соединение (может понадобиться VPN)"
+        ) from exc
 
     try:
         results = payload["results"]

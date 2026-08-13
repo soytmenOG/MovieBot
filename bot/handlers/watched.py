@@ -3,6 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+from aiogram.utils.chat_action import ChatActionSender
 
 from bot.keyboards import disambiguation_keyboard, watched_list_keyboard
 from db import repository
@@ -38,11 +39,12 @@ async def cmd_watched(message: Message, state: FSMContext) -> None:
         )
         return
 
-    try:
-        candidates = await search_movie(arg)
-    except TMDBError as exc:
-        await message.answer(f"Не получилось найти фильм: {exc}")
-        return
+    async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
+        try:
+            candidates = await search_movie(arg)
+        except TMDBError as exc:
+            await message.answer(f"Не получилось найти фильм: {exc}")
+            return
 
     if not candidates:
         await message.answer("Не нашёл такой фильм в базе. Проверь название.")

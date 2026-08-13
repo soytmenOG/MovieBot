@@ -7,8 +7,8 @@ Telegram-бот, который подбирает фильм под настр�
 
 ## Возможности
 
-- **Подбор фильма через свободный чат** — LLM (DeepSeek) ведёт диалог, при необходимости
-  уточняет запрос, а когда готова — предлагает конкретные фильмы.
+- **Подбор фильма через свободный чат** — LLM (через OpenRouter) ведёт диалог, при
+  необходимости уточняет запрос, а когда готова — предлагает конкретные фильмы.
 - **Проверка фактов через TMDB** — прежде чем показать фильм пользователю, бот сверяет
   название, которое предложила LLM, с базой TheMovieDB. Если фильма не существует (LLM иногда
   ошибается), предложение молча отбрасывается — так пользователь не увидит выдуманный тайтл.
@@ -20,7 +20,7 @@ Telegram-бот, который подбирает фильм под настр�
 ## Стек
 
 `aiogram 3` · `httpx` · `aiosqlite` · `python-dotenv` · `tenacity` (retry/backoff для внешних
-API) · DeepSeek API (LLM) · TMDB API (база фильмов)
+API) · OpenRouter API (LLM, бесплатная модель) · TMDB API (база фильмов)
 
 ## Структура проекта
 
@@ -29,7 +29,7 @@ main.py                    точка входа: сборка Dispatcher и з�
 config.py                  чтение .env
 db/database.py             схема SQLite и её инициализация
 db/repository.py           CRUD-функции: пользователи, просмотренные фильмы, история диалога
-services/deepseek_client.py   обёртка над DeepSeek chat completions (+ tool calling)
+services/openrouter_client.py  обёртка над OpenRouter chat completions (+ tool calling)
 services/tmdb_client.py       обёртка над поиском фильмов в TMDB
 bot/handlers/               обработчики: /start, /watched, свободный чат
 bot/storage/sqlite_storage.py  FSM-хранилище aiogram поверх SQLite
@@ -53,8 +53,15 @@ copy .env.example .env
 | Переменная | Где получить |
 |---|---|
 | `BOT_TOKEN` | [@BotFather](https://t.me/BotFather) в Telegram — команда `/newbot` |
-| `DEEPSEEK_API_KEY` | [platform.deepseek.com](https://platform.deepseek.com/) → API keys |
-| `TMDB_API_KEY` | [themoviedb.org](https://www.themoviedb.org/settings/api) → API Read Access Token |
+| `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) (войти можно через GitHub) |
+| `TMDB_API_KEY` | [themoviedb.org](https://www.themoviedb.org/settings/api) → «API Key» (v3, короткая строка из 32 символов, **не** «API Read Access Token») |
+
+По умолчанию используется бесплатная модель `nvidia/nemotron-3-super-120b-a12b:free` (задаётся
+переменной `OPENROUTER_MODEL` в `.env`) — она заметно реже выдумывает несуществующие названия
+фильмов, чем более мелкие бесплатные модели. Бесплатные модели на OpenRouter периодически убирают
+или переименовывают — если запрос падает с ошибкой 404 «model unavailable», открой
+[openrouter.ai/models](https://openrouter.ai/models), отфильтруй по цене `$0` и параметру
+`tools`, и подставь актуальный `id` модели в `OPENROUTER_MODEL`.
 
 Проверить, что ключи рабочие, до запуска самого бота:
 
@@ -81,5 +88,6 @@ _Будут добавлены после первого локального з
   от того, насколько LLM понимает нюансы формулировки.
 - Список просмотренных пополняется вручную командой `/watched`, а не через свободный чат —
   так надёжнее для первой версии.
-- Бесплатные лимиты DeepSeek/TMDB рассчитаны на личное использование, а не на сотни
-  одновременных пользователей.
+- Бесплатные лимиты OpenRouter/TMDB рассчитаны на личное использование, а не на сотни
+  одновременных пользователей. Бесплатные модели на OpenRouter иногда убирают из списка —
+  если модель по умолчанию перестанет быть доступна, замени `OPENROUTER_MODEL` на актуальную.

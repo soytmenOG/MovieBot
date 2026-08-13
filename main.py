@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -12,6 +13,8 @@ from db.database import init_db
 
 
 async def main() -> None:
+    # Консоль Windows (cp1251) не умеет печатать часть символов из логов aiogram/LLM.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.INFO)
     await init_db()
 

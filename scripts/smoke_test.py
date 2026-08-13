@@ -9,9 +9,13 @@ import asyncio
 import sys
 from pathlib import Path
 
+# Консоль Windows (cp1251) не умеет печатать часть символов из ответов LLM —
+# переключаем stdout на UTF-8, чтобы вывод не падал с UnicodeEncodeError.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.deepseek_client import DeepSeekError, get_recommendation_reply  # noqa: E402
+from services.openrouter_client import OpenRouterError, get_recommendation_reply  # noqa: E402
 from services.tmdb_client import TMDBError, search_movie  # noqa: E402
 
 
@@ -24,7 +28,7 @@ async def main() -> None:
     except TMDBError as exc:
         print(f"Ошибка TMDB: {exc}")
 
-    print("\n== DeepSeek: тестовый запрос ==")
+    print("\n== OpenRouter: тестовый запрос ==")
     try:
         reply = await get_recommendation_reply(
             [
@@ -33,8 +37,8 @@ async def main() -> None:
             ]
         )
         print(reply)
-    except DeepSeekError as exc:
-        print(f"Ошибка DeepSeek: {exc}")
+    except OpenRouterError as exc:
+        print(f"Ошибка OpenRouter: {exc}")
 
 
 if __name__ == "__main__":
