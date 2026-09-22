@@ -4,6 +4,7 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.utils.chat_action import ChatActionSender
 
+from bot.handlers.feedback import contains_issue_keywords, send_to_pipeline
 from db import repository
 from prompts.system_prompt import build_system_prompt
 from services.openrouter_client import OpenRouterError, get_recommendation_reply
@@ -20,6 +21,10 @@ async def on_free_text(message: Message) -> None:
     user_id = message.from_user.id
     await repository.ensure_user(user_id, message.from_user.username)
     await repository.add_message(user_id, "user", message.text)
+
+    if contains_issue_keywords(message.text):
+        # Не мешаем обычному диалогу — просто тихо отправляем в пайплайн фидбека на фоне.
+        asyncio.create_task(send_to_pipeline(message.text))
 
     watched = await repository.list_watched_movies(user_id)
     watched_ids = {movie["tmdb_id"] for movie in watched}

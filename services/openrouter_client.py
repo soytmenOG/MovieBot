@@ -3,7 +3,7 @@ import json
 import httpx
 import tenacity
 
-from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
+from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL, PROXY_URL
 
 PROPOSE_MOVIES_TOOL = {
     "type": "function",
@@ -47,11 +47,22 @@ class OpenRouterError(Exception):
     pass
 
 
+class _UpstreamError(Exception):
+    """OpenRouter иногда отдаёт HTTP 200 с ошибкой провайдера модели внутри тела ответа."""
+
+    def __init__(self, code: object, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
 def _should_retry(exc: BaseException) -> bool:
     if isinstance(exc, httpx.TransportError):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code == 429 or exc.response.status_code >= 500
+    if isinstance(exc, _UpstreamError):
+        return exc.code == 429 or (isinstance(exc.code, int) and exc.code >= 500)
     return False
 
 
@@ -65,7 +76,9 @@ _retry = tenacity.retry(
 
 @_retry
 async def _call_api(messages: list[dict]) -> dict:
-    async with httpx.AsyncClient(base_url=OPENROUTER_BASE_URL, timeout=httpx.Timeout(20.0)) as client:
+    async with httpx.AsyncClient(
+        base_url=OPENROUTER_BASE_URL, timeout=httpx.Timeout(20.0), proxy=PROXY_URL
+    ) as client:
         response = await client.post(
             "/chat/completions",
             headers={
@@ -82,7 +95,13 @@ async def _call_api(messages: list[dict]) -> dict:
             },
         )
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if error:
+        raise _UpstreamError(error.get("code"), error.get("message", "неизвестная ошибка провайдера"))
+
+    return payload
 
 
 async def get_recommendation_reply(messages: list[dict]) -> dict:
@@ -100,6 +119,8 @@ async def get_recommendation_reply(messages: list[dict]) -> dict:
         raise OpenRouterError(
             "Не удалось подключиться к OpenRouter — проверь интернет-соединение (может понадобиться VPN)"
         ) from exc
+    except _UpstreamError as exc:
+        raise OpenRouterError(f"Модель у провайдера сейчас недоступна: {exc.message}") from exc
 
     try:
         message = payload["choices"][0]["message"]

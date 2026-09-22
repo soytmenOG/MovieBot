@@ -4,3 +4,5 @@ __pycache__/
 data/*.db
 .venv/
 venv/
+*.log
+test_bug_report.json

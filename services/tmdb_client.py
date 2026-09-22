@@ -3,7 +3,7 @@ from typing import Optional
 import httpx
 import tenacity
 
-from config import TMDB_API_KEY, TMDB_BASE_URL
+from config import PROXY_URL, TMDB_API_KEY, TMDB_BASE_URL
 
 
 class TMDBError(Exception):
@@ -31,7 +31,9 @@ async def _fetch_search(title: str, year: Optional[str]) -> dict:
     params = {"query": title, "language": "ru-RU", "api_key": TMDB_API_KEY}
     if year:
         params["year"] = year
-    async with httpx.AsyncClient(base_url=TMDB_BASE_URL, timeout=httpx.Timeout(10.0)) as client:
+    async with httpx.AsyncClient(
+        base_url=TMDB_BASE_URL, timeout=httpx.Timeout(10.0), proxy=PROXY_URL
+    ) as client:
         response = await client.get("/search/movie", params=params)
         response.raise_for_status()
         return response.json()
